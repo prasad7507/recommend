@@ -5,7 +5,24 @@ from google.cloud import storage
 import pandas as pd
 import io
 from io import BytesIO
+from math import sqrt
 app = Flask(__name__)
+
+
+class ServerRequest:
+    def __init__(self):
+        global storage_clinet, bucket_name, ll, user_order_dataframe
+        storage_clinet = storage.Client.from_service_account_json(
+            'connection-f81bb-firebase-adminsdk-662co-2adb086890.json')
+        bucket_name = 'connection-f81bb.appspot.com'
+        bucket = storage_clinet.get_bucket(bucket_name)
+        ll = pd.read_csv(io.BytesIO(bucket.blob(
+            blob_name='productId.csv').download_as_string()), encoding='UTF-8', sep=',')
+        user_order_dataframe = pd.read_csv(io.BytesIO(bucket.blob(
+            blob_name='user_orders.csv').download_as_string()), encoding='UTF-8', sep=',')
+
+
+obj = ServerRequest()
 
 
 @app.route('/', methods=["POST", "GET"])
@@ -18,21 +35,12 @@ def index():
             userInput = []
             for i in range(0, len(data)):
                 userInput.append({'productId': data[i], 'rating': 0})
-            storage_clinet = storage.Client.from_service_account_json(
-                'connection-f81bb-firebase-adminsdk-662co-2adb086890.json')
-            bucket_name = 'connection-f81bb.appspot.com'
-            bucket = storage_clinet.get_bucket(bucket_name)
-            l = pd.read_csv(io.BytesIO(bucket.blob(
-                blob_name='productId.csv').download_as_string()), encoding='UTF-8', sep=',')
-            user_order_dataframe = pd.read_csv(io.BytesIO(bucket.blob(
-                blob_name='user_orders.csv').download_as_string()), encoding='UTF-8', sep=',')
             products = pd.DataFrame(userInput)
             userSubsetGroup = user_order_dataframe[user_order_dataframe.productId.isin(
                 products['productId'])]
             userSubsetGroup = user_order_dataframe.groupby(['userId'])
             userSubsetGroup = sorted(
                 userSubsetGroup,  key=lambda x: len(x[1]), reverse=True)
-            from math import sqrt
             pearsonCorrelationDict = {}
             for name, group in userSubsetGroup:
                 group = group.sort_values(by='productId')
@@ -73,7 +81,7 @@ def index():
             recommendation_df['productId'] = tempTopUsersRating.index
             recommendation_df = recommendation_df.sort_values(
                 by='weighted average recommendation score', ascending=False)
-            l = pd.DataFrame(l)
+            l = pd.DataFrame(ll)
             l.rename(columns={0: 'productId'}, inplace=True)
             rec_products = l.loc[l['productId'].isin(
                 recommendation_df.head(50)['productId'].tolist())]
